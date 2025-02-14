@@ -31,7 +31,7 @@ class ResidualBlock(nn.Module):
 
     def forward(self, x): 
         for _ in range(self.num_repeats): 
-            x = self.CNNBlock2.forward(self.CNNBlock1.forward(x))
+            x = x + self.CNNBlock2.forward(self.CNNBlock1.forward(x))
         return x
 
 #Darknet53 
@@ -52,4 +52,12 @@ class Darknet53(nn.Module):
         )
 
     def forward(self, X): 
-        return self.backbone(X) 
+        feature_maps_idx = [7, 9, 11]
+        FPN_mem = []
+        idx = 1
+        for layer in self.backbone: 
+            X = layer(X) 
+            if idx in feature_maps_idx: 
+                FPN_mem.append(X) 
+            idx += 1
+        return FPN_mem 

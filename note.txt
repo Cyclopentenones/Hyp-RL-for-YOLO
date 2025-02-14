@@ -1,0 +1,10 @@
+-Định dạng đầu ra của YOLOV3 là: 
++Batch, S, S, B*(C+5) mỗi grid cell được dự đoán 3Box 
++Mỗi Box gồm x, y, w, h, c và one hot vector riêng (khác với yolov1 là dùng chung ma trận one hot)
+
+-Cấu trúc backbone: 
++Darknet53 
++Sử dụng kiến trúc FPN (đưa ra lần lượt small prediction, medium prediction, large prediction tại các block thứ 7 9 11)
+
+-Loss: 
++Softmax+BinaryEntropyCross 
