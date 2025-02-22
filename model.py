@@ -1,33 +1,47 @@
-import torch.nn as nn 
-from backbone import Darknet53, CNNBlock
-class ScalePrediction(nn.Module): 
-    def __init__(self, in_channels, num_box, num_classes): 
-        super(ScalePrediction, self).__init__() 
-        self.CNNBlock1 = CNNBlock(in_channels, in_channels*2, kernel_size=3, stride=1, padding=1) 
-        self.CNNBlock2= CNNBlock(in_channels*2, (num_classes+5)*num_box, kernel_size=1, stride=1, padding=1, bn_act=False) 
-        self.num_classes = num_classes 
+import torch
+import torch.nn as nn
+
+class Net(nn.Module): 
+    def __init__(self, input_size): 
+        super(Net, self).__init__()
+
+        # LSTM block: Ghi nhớ khoảng 8 epoch trước
+        self.lstm = nn.LSTM(input_size=input_size, 
+                            hidden_size=64,  # 64 hoặc 128 
+                            num_layers=2
+                            )
+
+        # Fully Connected Layer sau LSTM
+        self.fc = nn.Sequential(
+            nn.Linear(64, 32), 
+            nn.ReLU()
+        )  
+
+        # Critic Network (Value Function)
+        self.critic = nn.Sequential(
+            nn.Linear(32, 16), 
+            nn.ReLU(), 
+            nn.Linear(16, 1)  # Giá trị V (scalar)
+        )
+
+        # Actor Network (Beta Distribution: Alpha & Beta)
+        self.alpha = nn.Sequential(
+            nn.Linear(32, 3),  # 3 actions (ví dụ: Learning Rate, Momentum, Weight Decay)
+            nn.Softplus()  # Softplus để đảm bảo alpha > 0
+        )
+
+        self.beta = nn.Sequential(
+            nn.Linear(32, 3), 
+            nn.Softplus()
+        )
+
     def forward(self, x): 
-        x = self.CNNBlock2(self.CNNBlock1(x)) 
-        x = x.view(x.size(0), 3, (self.num_classes+5), x.size(2), x.size(3)) 
-        x = x.permute(0, 1, 3, 4, 2) 
-        return x 
-
-class YOLOV3: 
-    def __init__(self, in_channels, num_classes): 
-        self.backbone = Darknet53()
-        self.in_channels = in_channels 
-        self.num_classes = num_classes
-
-    def forward(self, X): 
-        predictions = self.backbone.forward(X) #return (Batch, (num_classes+5)*num_box, S, S) 
-
-        for i in range(predictions): 
-            predictions[i] = ScalePrediction(
-                in_channels=predictions[i].size(1),
-                num_box=3, 
-                num_classes=self.num_classes
-            ).forward(predictions[i]) #return (Batch, num_box, S, S, num_classes+5) 
-        return predictions
-    
+        lstm_out, _ = self.lstm(x)  # Output có shape (batch, seq_len, hidden_size)
+        x = lstm_out[:, -1, :]  # Lấy output của bước thời gian cuối cùng (seq_len cuối)
         
+        x = self.fc(x)  # Fully connected
+        v = self.critic(x)  # Giá trị V (Critic)
+        alpha = self.alpha(x) + 1  # Alpha > 1
+        beta = self.beta(x) + 1  # Beta > 1
         
+        return alpha, beta, v
