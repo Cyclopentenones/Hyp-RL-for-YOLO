@@ -37,6 +37,7 @@ class ResidualBlock(nn.Module):
 #Darknet53 
 class Darknet53(nn.Module): 
     def __init__(self): 
+        super(Darknet53, self).__init__()
         self.backbone = nn.Sequential(
             CNNBlock(in_channels=3, out_channels=32, kernel_size=3, stride=1, padding=1), 
             CNNBlock(in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1), 
