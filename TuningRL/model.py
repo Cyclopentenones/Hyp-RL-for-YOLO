@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
+
 class Net(nn.Module): 
     def __init__(self, input_size): 
         super(Net, self).__init__()
 
-        self.lstm = nn.LSTM(input_size=input_size, hidden_size=64, num_layers=2)
+        self.lstm = nn.LSTM(input_size=input_size, hidden_size=64, num_layers=5)
 
         self.fc = nn.Sequential(
             nn.Linear(64, 32), 
@@ -16,28 +17,18 @@ class Net(nn.Module):
             nn.ReLU(), 
             nn.Linear(16, 1)  
         )
-
-
-        #using Beta distribution 
-        self.alpha = nn.Sequential(
-            nn.Linear(32, 1),  
-            nn.Softplus()  
-        )
-
-        self.beta = nn.Sequential(
-            nn.Linear(32, 1), 
-            nn.Softplus()
-        )
+        self.mean = nn.Linear(32, 1) 
+        self.log_std = nn.Linear(32, 1)  
 
     def forward(self, x):
-        x = torch.tensor(x, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
+        x = x.clone().detach().requires_grad_(True).float().unsqueeze(0).unsqueeze(-1)
         lstm_out, _ = self.lstm(x)  
         x = lstm_out[:, -1, :]  
         
         x = self.fc(x)  
 
-        alpha = self.alpha(x) 
-        beta = self.beta(x)  
+        mean = self.mean(x) 
+        log_std = self.log_std(x)  # Log standard deviation
         v = self.critic(x)  
 
-        return alpha, beta, v
+        return mean, log_std, v  

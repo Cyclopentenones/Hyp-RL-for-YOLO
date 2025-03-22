@@ -2,12 +2,6 @@ import torch
 import torch.nn as nn
 from model import Net 
 
-def scale(tensor, scale_range=(-0.01, 0.01)):
-    a, b = scale_range  
-    min_val = tensor.min()
-    max_val = tensor.max()
-    return a + ((tensor - min_val) / (max_val - min_val + 1e-8)) * (b - a)
-
 class Memory:
     def __init__(self):
         self.scores = [1e-5] * 8
@@ -24,7 +18,6 @@ class Memory:
             memory_list.append(val)
             if len(memory_list) > 8:
                 memory_list.pop(0)
-        
 
         for f in [self.scores, self.actions, self.log_probs, self.rewards, self.values]:
             assert len(f) <= 8
@@ -40,7 +33,7 @@ class Memory:
 class TuningAgent(nn.Module):
     def __init__(self, input_size, gamma=0.99, lr=1e-3, k_ep=5, device="cuda"):
         super(TuningAgent, self).__init__()
-        self.net = Net(input_size=input_size).to(device)  # Net dùng phân phối Beta
+        self.net = Net(input_size=input_size).to(device)  # Net dùng phân phối Gaussian
         self.gamma = gamma
         self.k_ep = k_ep
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=lr)
@@ -51,23 +44,20 @@ class TuningAgent(nn.Module):
         scores = self.memory.scores[-8:] 
         scores = torch.tensor(scores, dtype=torch.float32).to(self.device)
         with torch.no_grad():
-            alpha, beta, v = self.net(scores)
-            alpha = scale(alpha, scale_range=(1e-4, 0.99))
-            beta = scale(beta, scale_range=(1e-4, 0.99))
-            dist = torch.distributions.Beta(alpha, beta)
-            raw_action = dist.sample()
-            log_prob = dist.log_prob(raw_action)
-
-        action = scale(raw_action)
+            mean, log_std, v = self.net(scores)
+            std = torch.clamp(log_std.exp(), 1e-4, 1.0)  # Giới hạn độ lệch chuẩn
+            dist = torch.distributions.Normal(mean, std)
+            action = dist.sample()
+            action = torch.tanh(action)*0.01 
+            log_prob = dist.log_prob(action)
         return action.item(), log_prob, v
 
     def evaluate(self, scores, actions):
-        ###################################################################################
-        alpha, beta, v = self.net(scores)
-        alpha, beta = scale(alpha, (1e-2, 0.99)), scale(beta, (1e-2, 0.99))
-        dist = torch.distributions.Beta(alpha, beta)
-        ################################################################################### đang lỗi
-        raw_actions = scale(actions, scale_range=(0, 1))
+        mean, log_std, v = self.net(scores)
+        std = torch.clamp(log_std.exp(), 1e-4, 1.0)  # Giữ giá trị std hợp lý
+        dist = torch.distributions.Normal(mean, std)
+        raw_actions = torch.atanh(actions/0.01)
+        print(raw_actions)
         log_prob = dist.log_prob(raw_actions)
         entropy = dist.entropy()
         return log_prob, entropy, v.squeeze(-1)
@@ -87,16 +77,15 @@ class TuningAgent(nn.Module):
         log_probs_old = torch.tensor(self.memory.log_probs[-8:], dtype=torch.float32).to(self.device)
         values_old = torch.tensor(self.memory.values[-8:], dtype=torch.float32).to(self.device)
 
-
         # Update
         for _ in range(self.k_ep):
-            #Evaluate
+            # Evaluate
             log_probs, entropy, values = self.evaluate(scores, actions)
 
             with torch.no_grad():
                 all_values = torch.cat([values, values_old.detach()])
 
-            #GAE
+            # GAE
             td_target = rewards + self.gamma * all_values[1:] 
             a = self.compute_gae(rewards, all_values, gamma=self.gamma, lambda_=0.95)
             a = (a - a.mean()) / (a.std() + 1e-8)
