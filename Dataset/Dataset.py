@@ -67,7 +67,7 @@ def main():
         if i >= 5:
             break
 
-        label_int = label.item()
+        label_int = label
         class_wnid = list(class_mapping.keys())[label_int]
 
         print(f"Image {i + 1}: {dataset.img_files[i]}")
