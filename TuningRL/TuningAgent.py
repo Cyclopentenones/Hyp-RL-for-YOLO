@@ -4,7 +4,7 @@ from model import Net
 
 class Memory:
     def __init__(self):
-        self.scores = [1e-5] * 8
+        self.scores = [1e4] * 8
         self.actions = [1e-5] * 8
         self.log_probs = [1e-5] * 8
         self.rewards = [1e-5] * 8
@@ -23,7 +23,7 @@ class Memory:
             assert len(f) <= 8
 
     def clear(self):
-        self.scores = [1e-5] * 8
+        self.scores = [1e4] * 8
         self.actions = [1e-5] * 8
         self.log_probs = [1e-5] * 8
         self.rewards = [1e-5] * 8
@@ -50,18 +50,17 @@ class TuningAgent(nn.Module):
             action = dist.sample()
             action = torch.tanh(action)*0.01 
             log_prob = dist.log_prob(action)
-        return action.item(), log_prob, v
-
+        return action, log_prob, v
+    
     def evaluate(self, scores, actions):
         mean, log_std, v = self.net(scores)
         std = torch.clamp(log_std.exp(), 1e-4, 1.0)  # Giữ giá trị std hợp lý
         dist = torch.distributions.Normal(mean, std)
         raw_actions = torch.atanh(actions/0.01)
-        print(raw_actions)
         log_prob = dist.log_prob(raw_actions)
         entropy = dist.entropy()
         return log_prob, entropy, v.squeeze(-1)
-
+    
     def compute_gae(self, rewards, values, gamma=0.99, lambda_=0.95):
         a = torch.zeros_like(rewards).to(self.device)
         last_a = 0
@@ -69,7 +68,7 @@ class TuningAgent(nn.Module):
             delta = rewards[t] + gamma * values[t + 1] - values[t]
             a[t] = last_a = delta + gamma * lambda_ * last_a
         return a
-
+    
     def update(self):
         scores = torch.tensor(self.memory.scores[-8:], dtype=torch.float32).to(self.device)
         actions = torch.tensor(self.memory.actions[-8:], dtype=torch.float32).to(self.device)
